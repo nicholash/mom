@@ -402,11 +402,11 @@ if (mpp_pe() == mpp_root_pe() .or. parallel_coupling) then
 endif
 
 
-    !write(il_out, *) "compute domain:",mpp_pe(), iisc, iiec, jjsc, jjec 
-    !write(il_out, *) "data domain:",mpp_pe(), iisd, iied, jjsd, jjed 
-    !write(il_out, *) "global domain:",mpp_pe(), isg, ieg, jsg, jeg 
-    !write(il_out, *) "global layout nx x ny:",pe_layout(1), pe_layout(2) 
-    !flush(il_out)
+    write(il_out, *) "compute domain:",mpp_pe(), iisc, iiec, jjsc, jjec 
+    write(il_out, *) "data domain:",mpp_pe(), iisd, iied, jjsd, jjed 
+    write(il_out, *) "global domain:",mpp_pe(), isg, ieg, jsg, jeg 
+    write(il_out, *) "global layout nx x ny:",pe_layout(1), pe_layout(2) 
+    flush(il_out)
 
   il_paral (:) = 0
   if (.not. parallel_coupling) then 
@@ -789,9 +789,9 @@ if ( write_restart ) then
         end select
 
     if (parallel_coupling) then
-      call mpp_global_field(Ocean_sfc%domain, vtmp(iisc:iiec,jjsc:jjec), gtmp)
+      call mpp_global_field(Ocean_sfc%domain, vtmp, gtmp)
     else
-      call mpp_global_field(Ocean_sfc%domain, vtmp(iisc:iiec,jjsc:jjec), vwork)
+      call mpp_global_field(Ocean_sfc%domain, vtmp, vwork)
     endif
 
          if (mpp_pe() == mpp_root_pe()) then
