@@ -466,7 +466,7 @@ program main
 
   call fms_end
 
-  call external_coupler_mpi_exit(mpi_comm_mom, external_initialization)
+  call external_coupler_mpi_exit()
 
   print *, 'MOM4: --- completed ---'
 
@@ -627,17 +627,14 @@ end subroutine external_coupler_restart
 subroutine external_coupler_exit
     ! Clean up as appropriate. Final call to external program
     use mom_oasis3_interface_mod, only : mom_prism_terminate
-    call mom_prism_terminate
+    call mom_prism_terminate()
 end subroutine external_coupler_exit
 
-subroutine external_coupler_mpi_exit(mom_local_communicator, external_initialization)
-    ! mpp_exit wont call MPI_FINALIZE if mom_local_communicator /= MPI_COMM_WORLD
+subroutine external_coupler_mpi_exit()
     implicit none
-    integer, intent(in) :: mom_local_communicator
-    logical, intent(in) :: external_initialization
     integer :: ierr
+
     call MPI_FINALIZE(ierr)
-    return
 end subroutine external_coupler_mpi_exit
 
 end program main
