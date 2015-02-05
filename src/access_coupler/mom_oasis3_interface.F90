@@ -112,7 +112,7 @@ public :: iisd, iied, jjsd, jjed, iisc, iiec, jjsc, jjec
 
 private
 
-include "mpif.h" 
+use mpi
 
 !
 ! OASIS3 variables:
