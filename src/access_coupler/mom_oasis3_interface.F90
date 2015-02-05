@@ -77,6 +77,7 @@ module mom_oasis3_interface_mod
 !
 
 use mod_prism
+use mpi
 
 !MOM4 modules: 
 use fms_mod,         only: file_exist
@@ -112,7 +113,6 @@ public :: iisd, iied, jjsd, jjed, iisc, iiec, jjsc, jjec
 
 private
 
-use mpi
 
 !
 ! OASIS3 variables:
