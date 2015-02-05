@@ -273,7 +273,7 @@ program main
   else
       date_restart = date_init
   endif
-      
+
   call set_calendar_type (calendar_type)
 
   call field_manager_init(nfields)
@@ -462,8 +462,6 @@ program main
   ! write restart file
   call ocean_solo_restart(Time_end, Time_restart_current)
 
-  call fms_io_exit
-
   call external_coupler_exit
 
   call fms_end
@@ -618,9 +616,9 @@ subroutine external_coupler_restart( dt_cpld, num_cpld_calls, Ocean_sfc)
     !Clean up as appropriate and write a restart
     use mom_oasis3_interface_mod, only : write_coupler_restart
     implicit none
-    integer, intent(in)               :: dt_cpld, num_cpld_calls
+    integer, intent(in)                   :: dt_cpld, num_cpld_calls
+    type (ocean_public_type), intent(in)  :: Ocean_sfc
     integer                           :: timestep
-    type (ocean_public_type)         :: Ocean_sfc
 
     timestep = num_cpld_calls * dt_cpld
     call write_coupler_restart(timestep, Ocean_sfc, write_restart=.true.)

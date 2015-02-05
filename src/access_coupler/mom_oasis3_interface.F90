@@ -756,7 +756,7 @@ use auscom_ice_mod, only      : auscom_ice_heatflux_new
 
 logical, intent(in) :: write_restart
 integer, intent(in) :: step
-type (ocean_public_type) :: Ocean_sfc
+type (ocean_public_type), intent(in) :: Ocean_sfc
 
 integer :: ncid,ll,ilout
 real, dimension(iisd:iied,jjsd:jjed) :: vtmp
