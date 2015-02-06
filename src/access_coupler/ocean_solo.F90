@@ -450,23 +450,18 @@ program main
   enddo
 
   call external_coupler_restart( dt_cpld, num_cpld_calls, Ocean_sfc)
-
-  ! close some of the main components 
-  call ocean_model_end(Ocean_sfc, Ocean_state, Time)
-
-  call diag_manager_end(Time)
-
-  ! need to reset pelist before calling mpp_clock_end
-  ! call mpp_set_current_pelist()
-
   ! write restart file
   call ocean_solo_restart(Time_end, Time_restart_current)
 
-  call external_coupler_exit
+  ! close some of the main components 
+  call ocean_model_end(Ocean_sfc, Ocean_state, Time)
+  call diag_manager_end(Time)
 
   call fms_end
 
-  call external_coupler_mpi_exit()
+  call external_coupler_exit
+
+  call MPI_FINALIZE(ierr)
 
   print *, 'MOM4: --- completed ---'
 
@@ -629,12 +624,5 @@ subroutine external_coupler_exit
     use mom_oasis3_interface_mod, only : mom_prism_terminate
     call mom_prism_terminate()
 end subroutine external_coupler_exit
-
-subroutine external_coupler_mpi_exit()
-    implicit none
-    integer :: ierr
-
-    call MPI_FINALIZE(ierr)
-end subroutine external_coupler_mpi_exit
 
 end program main
