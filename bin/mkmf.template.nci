@@ -5,11 +5,11 @@
 # commands #
 ############
 ifeq ($(VTRACE), yes)
-    FC = mpifort-vt
-    LD = mpifort-vt
+    FC = mpif90-vt
+    LD = mpif90-vt
 else
-    FC = mpifort
-    LD = mpifort
+    FC = mpif90
+    LD = mpif90
 endif
 
 CC = mpicc
