@@ -98,8 +98,7 @@ module ocean_nphysics_new_mod
   public ocean_nphysics_new_end
   public neutral_slopes
   public gradrho
-
-  private tracer_gradients
+  public tracer_gradients
 
   !private gradrho
   !private neutral_slopes
