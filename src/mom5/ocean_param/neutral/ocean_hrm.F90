@@ -1,4 +1,4 @@
-module ocean_nphysicsC_mod
+module ocean_hrm_mod
 #define COMP isc:iec,jsc:jec
 #define COMPXL isc-1:iec,jsc:jec
 #define COMPYL isc:iec,jsc-1:jec
@@ -274,7 +274,6 @@ use time_manager_mod,        only: set_time, time_type, increment_time, operator
 use ocean_density_mod,       only: density_derivs 
 use ocean_domains_mod,       only: get_local_indices, set_ocean_domain
 use ocean_nphysics_util_mod, only: ocean_nphysics_coeff_init, ocean_nphysics_coeff_end
-use ocean_nphysics_util_mod, only: neutral_slopes, tracer_derivs 
 use ocean_nphysics_util_mod, only: compute_eady_rate, compute_baroclinicity
 use ocean_nphysics_util_mod, only: compute_rossby_radius, compute_bczone_radius
 use ocean_nphysics_util_mod, only: compute_diffusivity, ocean_nphysics_util_restart
@@ -282,14 +281,14 @@ use ocean_nphysics_util_mod, only: transport_on_nrho_gm, transport_on_rho_gm, tr
 use ocean_nphysics_util_mod, only: cabbeling_thermob_tendency
 use ocean_nphysics_util_mod, only: compute_eta_tend_gm90
 use ocean_nphysics_util_mod, only: watermass_diag_init, watermass_diag_ndiffuse, watermass_diag_sdiffuse
-use ocean_nphysics_new_mod,  only: neutral_slopes=>gradrho
-use ocean_nphysics_new_mod,  only: neutral_slopes=>calc_neutral_slope_vector
+use ocean_nphysics_new_mod,  only: neutral_slopes, gradrho
 use ocean_operators_mod,     only: FAX, FAY, FMX, FMY, BDX_ET, BDY_NT
 use ocean_parameters_mod,    only: missing_value, onehalf, onefourth, oneeigth, DEPTH_BASED
 use ocean_parameters_mod,    only: rho0r, rho0, grav
 use ocean_tracer_diag_mod,   only: diagnose_eta_tend_3dflux 
 use ocean_types_mod,         only: ocean_grid_type, ocean_domain_type, ocean_density_type
 use ocean_types_mod,         only: ocean_prog_tracer_type, ocean_thickness_type
+use ocean_types_mod,         only: ocean_velocity_type
 use ocean_types_mod,         only: ocean_time_type, ocean_time_steps_type
 use ocean_types_mod,         only: tracer_2d_type, tracer_3d_0_nk_type, tracer_3d_1_nk_type 
 use ocean_util_mod,          only: write_note, write_line, write_warning
@@ -300,10 +299,8 @@ use ocean_workspace_mod,     only: wrk1_v, wrk2_v, wrk3_v, wrk4_v
 
 implicit none
 
-public ocean_nphysicsC_init
-public ocean_nphysicsC_end
-public nphysicsC
-public ocean_nphysicsC_restart
+public ocean_hrm_init
+public ocean_hrm_end
 
 private 
 
@@ -324,6 +321,7 @@ integer :: num_prog_tracers = 0
 ! for diagnostics 
 real, dimension(:,:,:), allocatable :: uhrho_et_hrm  ! i-component of advective mass transport
 real, dimension(:,:,:), allocatable :: vhrho_nt_hrm  ! j-component of advective mass transport
+real, dimension(:,:,:), allocatable :: T_trans       ! vertical sum of T transport
 
 ! introduce following derived types so that do not need to know num_prog_tracers at compile time 
 type(tracer_3d_1_nk_type), dimension(:), allocatable  :: dTdx    ! tracer partial derivative (tracer/m)
@@ -378,13 +376,12 @@ logical :: debug_this_module = .false.
 
 !**************end of nml settings**************
 
-namelist /ocean_nphysicsC_nml/ use_this_module, debug_this_module, &
-          do_hrm             &
+namelist /ocean_nphysicsC_nml/ use_this_module, debug_this_module, do_hrm
 
 contains
 
 !#######################################################################
-! <SUBROUTINE NAME="ocean_nphysicsC_init">
+! <SUBROUTINE NAME="ocean_hrm_init">
 !
 ! <DESCRIPTION>
 ! Initialize the neutral physics module by registering fields for 
@@ -393,7 +390,7 @@ contains
 ! </DESCRIPTION>
 !
 subroutine ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_prog,&
-           velocity, debug)
+           velocity)
 
   type(ocean_grid_type),        intent(in), target   :: Grid
   type(ocean_domain_type),      intent(in), target   :: Domain
@@ -404,94 +401,11 @@ subroutine ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_pro
   type(ocean_prog_tracer_type), intent(inout)        :: T_prog(:)
   type(ocean_velocity_type),    intent(inout)        :: Velocity
 
+  allocate (vhrho_nt_hrm(isd:ied,jsd:jed,nk))
+  allocate (uhrho_et_hrm(isd:ied,jsd:jed,nk))
+
 end subroutine ocean_hrm_init
 ! </SUBROUTINE>  NAME="ocean_hrm_init"
-
-!#######################################################################
-! <SUBROUTINE NAME="nphysicsC">
-!
-! <DESCRIPTION>
-! This function computes the thickness weighted and density weighted
-! time tendency for tracer from neutral physics.  Full discussion
-! and details are provided by Griffies (2008). 
-!
-! Here is a brief summary.  
-!
-!---How the neutral diffusive flux components are computed:
-!
-! The vertical flux component is split into diagonal (3,3) and 
-! off-diagonal (3,1) and (3,2) terms. The off-diagonal (3,1) and (3,2) 
-! terms are included explicitly in time. The main contribution from the 
-! (3,3) term to the time tendency is included implicitly in time 
-! along with the usual contribution from diapycnal processes 
-! (vertical mixing schemes).  This is the K33_implicit term.
-! This approach is necessary with high vertical resolution, as 
-! noted by Cox (1987).  However, splitting the vertical flux into 
-! an implicit and explicit piece compromises the 
-! integrity of the vertical flux component (see Griffies et al. 1998).
-! So to minimize the disparity engendered by this split, the portion of 
-! K33 that can be stably included explicitly in time is computed along 
-! with the (3,1) and (3,2) terms. 
-! 
-! All other terms in the mixing tensor are included explicitly in time
-! using a forward time step as required for temporal stability of 
-! numerical diffusive processes.  
-!
-! The off-diagonal terms in the horizontal flux components, and all terms
-! in the vertical flux component, are tapered in regions of steep neutral
-! slope according to the requirements of linear stability.  MOM allows for 
-! choice of two tapering schemes:
-!
-! (a) the tanh taper of Danabasoglu and McWilliams (1995)
-! (b) the quadratic scheme of Gerdes, Koberle, and Willebrand (1991)
-!
-! Linear stability is far less stringent on the diagonal (1,1) and (2,2)
-! part of the horizontal flux.  Indeed, these terms in practice need
-! not be tapered in steep sloped regions. 
-!
-!---How the skew diffusive flux components are computed:
-!
-! The skew flux components are purely off-diagonal.  
-! They are computed based on a vector streamfunction which 
-! is built from a sum of baroclinic modes. 
-! It is this part of the calculation that differs from 
-! ocean_nphysicsA and ocean_nphysicsB.
-! </DESCRIPTION>
-!
-subroutine horizontal_residual_mean (Time, Thickness, Dens, rho, T_prog, &
-                      Velocity)
-
-  type(ocean_time_type),        intent(in)    :: Time
-  type(ocean_thickness_type),   intent(in)    :: Thickness
-  type(ocean_density_type),     intent(in)    :: Dens
-  real, dimension(isd:,jsd:,:), intent(in)    :: rho
-  real, dimension(isd:,jsd:),   intent(in)    :: surf_blthick
-  type(ocean_prog_tracer_type), intent(inout) :: T_prog(:)
-  type(ocean_velocity_type),    intent(inout)        :: Velocity
-
-  if (.not. use_this_module) return
-
-  if ( .not. module_is_initialized ) then 
-     call mpp_error(FATAL, &
-     '==>Error from ocean_nphysicsC (neutral_physics): needs initialization')
-  endif 
-
-  if (size(T_prog(:)) /= num_prog_tracers) then 
-    call mpp_error(FATAL, &
-    '==>Error from ocean_nphysicsC (neutral_physics): inconsistent size of T_prog')
-  endif 
-
-  taum1 = Time%taum1
-  tau   = Time%tau
-
-  ! time dependent delqc geometric factor 
-  do k=1,nk
-    delqc(:,:,k,0) = Grd%fracdz(k,0)*Thickness%rho_dzt(:,:,k,tau)
-    delqc(:,:,k,1) = Grd%fracdz(k,1)*Thickness%rho_dzt(:,:,k,tau)
-  enddo
-
-end subroutine horizontal_residual_mean
-! </SUBROUTINE> NAME="nphysicsC"
 
 
 !#######################################################################
@@ -507,21 +421,32 @@ subroutine compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
   type(ocean_time_type),      intent(in) :: Time
   type(ocean_density_type),   intent(in) :: Dens
   type(ocean_thickness_type), intent(in) :: Thickness
-  type(ocean_velocity_type), intent(in) :: Velocity
+  type(ocean_grid_type),      intent(in) :: Grid
+  type(ocean_prog_tracer_type), intent(in)        :: T_prog(:)
+  type(ocean_velocity_type),  intent(in) :: Velocity
 
-  real, dimension(isd:,jsd:,:,:),  intent(in) :: dTdx
-  real, dimension(isd:,jsd:,:,:),  intent(in) :: dTdy
-  real, dimension(isd:,jsd:,0:,:), intent(in) :: dTdz
+  real, dimension(isd:ied,jsd:jed,nk,size(T_prog)) :: dTdx, dTdy
+  real, dimension(isd:ied,jsd:jed,0:nk,size(T_prog)) :: dTdz
 
-  real, dimension(isd:,jsd:,:,0:,0:), intent(out) :: slopex_xz
-  real, dimension(isd:,jsd:,:,0:,0:), intent(out) :: slopey_yz
-  real, dimension(isd:,jsd:,:,0:),    intent(out) :: absslope_z
-  real, dimension(isd:,jsd:,:),       intent(out) :: absslope
+  real, dimension(isd:ied,jsd:jed,nk,0:1,0:1) :: slopex_xz
+  real, dimension(isd:ied,jsd:jed,nk,0:1,0:1) :: slopey_yz
 
   ! neutral density derivatives 
   real, dimension(isd:ied,jsd:jed,nk,0:1) :: drhodx_x
   real, dimension(isd:ied,jsd:jed,nk,0:1) :: drhody_y
   real, dimension(isd:ied,jsd:jed,nk,0:1) :: drhodz_z 
+  
+  real, dimension(isd:ied,jsd:jed,nk,0:1) :: absslope_z
+  real, dimension(isd:ied,jsd:jed,nk) :: absslope
+
+  !
+  real :: t
+  real,dimension(isd:ied,jsd:jed,nk) :: v,vE,vW,vu,vl
+  real,dimension(nk) :: z, delt_z
+  real,dimension(isd:ied,jsd:jed) :: delt_x
+  real,dimension(isd:ied, jsd:jed, nk, 0:1) :: slope_xz_avg
+
+  integer :: i, j, k, l
 
   integer :: stdoutunit
   stdoutunit=stdout()
@@ -540,27 +465,126 @@ subroutine compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
 
   ! i-component of hrm mass transport. units ((kg/m^3)*m^2/sec)
   uhrho_et_hrm(:,:,:) = 0.0
-  ! j-component of hrm mass transport. units ((kg/m^3)*m^2/sec)
+  ! j-component of hrm mass transport. units:kg/sec     units ((kg/m^3)*m^2/sec)
   vhrho_nt_hrm(:,:,:) = 0.0
 
-  wrk1_v(:,:,:,:) = 0.0 ! (rho*psix,rho*psiy) = 0.0
+  ! FIXME: which time index to use?
+  t = 1 !The velocity is given at 3 time levels t = 1,2,3
+  v = velocity%u(:,:,:,2,t) !The j component of velocity at t time level
+  vE = v(2:,:,:) !The velocity on the east side of a box
+  vW = v(1:ied-1,:,:) !The velocity on the west side of a box
+  VE = (vE(:,:,1:ied-1) + vE(:,:,2:))/2 !Average the velocity onto depth z
+  VW = (vW(:,:,1:ied-1) + vW(:,:,2:))/2 !Average the velocity onto depth z
+  vu = v(:,:,1:ied-1) !Velocity at upper face
+  vl = v(:,:,2:)   !Velocity at lower face
+  Vu = (vu(1:ied-1,:,:) + vu(2:,:,:))/2 !Average to the center
+  Vl = (vl(1:ied-1,:,:) + vl(2:,:,:))/2 !Average to the center
+  
+  z = Grid%zt  ! distance from surface to grid point in level k (m) 
+  delt_z = Grid%dzt  ! initial vertical resolution of T or U grid cells (m)
+  delt_x = Grid%dxtn ! i-width of north face of T-cells (m)
+
+  !Put a limit to the neutral slopes
+  !do i = 1,size(slopex_xz,1)
+  	!do j = 1,size(slopex_xz,2)
+  	!	do k = 1,size(slopex_xz,3)
+  	!		do l = 1,size(slopex_xz,4)
+  	!			do m = 1,size(slopex_xz,5)
+  	!				if slopex_xz(i,j,k,l,m) > 10^-2
+  	!				   slopex_xz(i,j,k,l,m) = 10^-2
+  	!				end if
+  	!			enddo
+  	!		enddo
+  	!	enddo
+  	!enddo
+  !enddo
+  
+  !Take the average of the upper and lower quater cells
+  slope_xz_avg = (slopex_xz(:,:,:,:,0) + slopex_xz(:,:,:,:,1))/2
+  !print *,size(slopexz) !To check the dimension of slopexz
+  
+ !Set a limit to the neutral slopes
+ do l = 1,size(slope_xz_avg,4)
+   do k = 1,size(slope_xz_avg,3)
+     do j = 1,size(slope_xz_avg,2)
+       do i = 1,size(slope_xz_avg,1)
+         if (slope_xz_avg(i,j,k,l) > 10**-2) then
+  					slope_xz_avg(i,j,k,l) = 10**-2
+  			end if
+  		enddo
+  	enddo
+    enddo
+  enddo
+  
   do k=1,nk
      do j=jsc,jec
         do i=isc,iec
            uhrho_et_hrm(i,j,k) = 0.0
-           vhrho_nt_hrm(i,j,k) = 0.0
+           vhrho_nt_hrm(i,j,k) = 1/24*(VE(i, j, k)-VW(i, j, k))*(slope_xz_avg(i,j,k,0)+slope_xz_avg(i,j,k,1))*(delt_x(i,j))**2 + &
+           1/48*(Vu(i, j, k)-Vl(i, j, k))/delt_z(k)*((slope_xz_avg(i,j,k,0))**2+(slope_xz_avg(i,j,k,1))**2)*(delt_x(i, j))**3
         enddo
      enddo
   enddo
 
   ! update domains as per C-grid fluxes
-  call mpp_update_domains(uhrho_et_gm(:,:,:), vhrho_nt_gm(:,:,:),&
+  call mpp_update_domains(uhrho_et_hrm(:,:,:), vhrho_nt_hrm(:,:,:),&
                           Dom_flux%domain2d, gridtype=CGRID_NE)
 
-  call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
-  call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
+  ! FIXME: enable these.
+  !call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
+  !call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
 
 end subroutine compute_hrm_transport
+
+!#######################################################################
+! <SUBROUTINE NAME="compute_hrm_Ttransport">
+!
+! <DESCRIPTION>
+! Diagnose advective potential temperature transport from HRM. 
+!
+subroutine compute_hrm_Ttransport (T_prog, T_trans)
+
+! Potential temperature
+type(ocean_prog_tracer_type), dimension(:), intent(in)    :: T_prog
+real,dimension(isd:ied,jsd:jed), intent(inout) :: T_trans
+
+real,dimension(isd:ied,jsd:jed,nk) :: del_psi
+real,dimension(isd:ied,jsd:jed,nk+1) :: avrg_psi
+integer :: num_prog_tracers, n, index_temp
+
+integer :: i, j, k
+
+num_prog_tracers = size(T_prog)
+
+! read the the potential temperature
+index_temp = -1
+do n=1,num_prog_tracers
+    if (T_prog(n)%name == 'temp') then
+        index_temp = n
+    endif
+enddo
+if (index_temp == -1) then
+    call mpp_error(FATAL, &
+            '==>Error: temp not identified in call to compute_hrm_Ttransport')
+endif
+avrg_psi(:,:,1) = 0.0
+   do k = 2,nk
+     do j = jsd,jed
+       do i = isd,ied
+        avrg_psi(i,j,k) = (vhrho_nt_hrm(i,j,k) + vhrho_nt_hrm(i,j,k))/2
+enddo
+enddo
+enddo
+avrg_psi(:,:,nk+1) = 0.0
+
+del_psi = avrg_psi(:,:,2:nk) - avrg_psi(:,:,1:nk-1)
+
+    ! FIXME: which time index should we use?
+T_trans = sum(del_psi*T_prog(index_temp)%field(:, :, :, tau),DIM = 3)
+
+end subroutine compute_hrm_Ttransport
+
+
 ! </SUBROUTINE> NAME="compute_advect_transport"
 
 
@@ -583,4 +607,4 @@ end subroutine ocean_nphysicsC_end
 ! </SUBROUTINE> NAME="ocean_nphysicsC_end"
 
 
-end module ocean_nphysicsC_mod
+end module ocean_hrm_mod
