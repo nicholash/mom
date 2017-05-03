@@ -261,6 +261,7 @@ use ocean_nphysics_mod,           only: ocean_nphysics_init, ocean_nphysics_end,
 use ocean_nphysics_mod,           only: ocean_nphysics_restart
 use ocean_nphysics_new_mod,       only: ocean_nphysics_new_init, ocean_nphysics_new_end, neutral_physics_new
 use ocean_nphysics_new_mod,       only: ocean_nphysics_new_restart
+use ocean_hrm_mod,                only: ocean_hrm_init, ocean_hrm_end, compute_hrm_transport
 use ocean_obc_mod,                only: ocean_obc_init, ocean_obc_end
 use ocean_obc_mod,                only: ocean_obc_update_boundary, ocean_obc_prepare
 use ocean_obc_mod,                only: ocean_obc_restart
@@ -501,6 +502,7 @@ private
   integer :: id_advect
   integer :: id_vmix
   integer :: id_neutral
+  integer :: id_hrm
   integer :: id_compute_visc_form_drag
   integer :: id_submesoscale
   integer :: id_sw
@@ -714,6 +716,7 @@ subroutine ocean_model_init(Ocean, Ocean_state, Time_init, Time_in)
     id_density              = mpp_clock_id('(Ocean update density) '         ,grain=CLOCK_MODULE)    
     id_vmix                 = mpp_clock_id('(Ocean vertical mixing coeff) '  ,grain=CLOCK_MODULE)
     id_neutral              = mpp_clock_id('(Ocean neutral physics) '        ,grain=CLOCK_MODULE)
+    id_hrm                  = mpp_clock_id('(Ocean Horiz Residual Mean) '    ,grain=CLOCK_MODULE)
     id_submesoscale         = mpp_clock_id('(Ocean submesoscale restrat)'    ,grain=CLOCK_MODULE)
     id_sw                   = mpp_clock_id('(Ocean shortwave) '              ,grain=CLOCK_MODULE)
     id_sponges_eta          = mpp_clock_id('(Ocean sponges_eta) '            ,grain=CLOCK_MODULE)
@@ -1299,6 +1302,7 @@ subroutine ocean_model_init(Ocean, Ocean_state, Time_init, Time_in)
     call ocean_nphysics_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_prog(:), Ocean_options, &
                              vert_coordinate_type, vert_coordinate_class, cmip_units, debug=debug)
     call ocean_nphysics_new_init(Grid, Domain, Time, Time_steps, Thickness, T_prog, Ocean_options, vert_coordinate_type)
+    call ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_prog, Velocity)
     call ocean_submesoscale_init(Grid, Domain, Time, Dens, T_prog(:), Ocean_options, dtime_t, &
                                  vert_coordinate_class, cmip_units, debug=debug)
     call ocean_lap_friction_init(Grid, Domain, Time, Ocean_options, dtime_u, have_obc, horz_grid, debug=debug)
@@ -1821,6 +1825,10 @@ subroutine ocean_model_init(Ocean, Ocean_state, Time_init, Time_in)
        call neutral_physics_new(Time, Domain, Thickness, Dens, Grid, surf_blthick, &
             T_prog, rossby_radius, gm_diffusivity)
        call mpp_clock_end(id_neutral)
+
+       call mpp_clock_begin(id_hrm)
+       call compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
+       call mpp_clock_end(id_hrm)
 
        ! compute form drag vertical viscosity for vertical momentum transport
        call mpp_clock_begin(id_compute_visc_form_drag)

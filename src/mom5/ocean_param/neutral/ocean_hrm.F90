@@ -51,11 +51,12 @@ use fms_mod,                 only: FATAL, WARNING, NOTE
 use fms_mod,                 only: open_namelist_file, check_nml_error, close_file, write_version_number
 use mpp_domains_mod,         only: mpp_update_domains
 use mpp_domains_mod,         only: CGRID_NE, WUPDATE, SUPDATE, EUPDATE, NUPDATE
+use ocean_parameters_mod,    only: missing_value
 use mpp_domains_mod,         only: cyclic_global_domain, global_data_domain
 use mpp_mod,                 only: input_nml_file, mpp_error, stdout, stdlog
 use mpp_mod,                 only: mpp_clock_id, mpp_clock_begin, mpp_clock_end, CLOCK_ROUTINE
 
-use ocean_nphysics_new_mod,  only: neutral_slopes, gradrho
+use ocean_nphysics_new_mod,  only: neutral_slopes, gradrho, tracer_gradients
 use ocean_tracer_diag_mod,   only: diagnose_eta_tend_3dflux
 use ocean_types_mod,         only: ocean_grid_type, ocean_domain_type, ocean_density_type
 use ocean_types_mod,         only: ocean_prog_tracer_type, ocean_thickness_type
@@ -67,6 +68,7 @@ use ocean_util_mod,          only: diagnose_2d, diagnose_3d
 implicit none
 
 public ocean_hrm_init
+public compute_hrm_transport
 public ocean_hrm_end
 
 private 
@@ -75,7 +77,8 @@ type(ocean_grid_type), pointer   :: Grd => NULL()
 type(ocean_domain_type), pointer :: Dom => NULL()
 type(ocean_domain_type), save    :: Dom_flux
 
-integer :: num_prog_tracers = 0
+integer :: id_uhrho_et_hrm      =-1
+integer :: id_vhrho_nt_hrm      =-1
 
 #include <ocean_memory.h>
 
@@ -167,6 +170,16 @@ subroutine ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_pro
 
   allocate (vhrho_nt_hrm(isd:ied,jsd:jed,nk))
   allocate (uhrho_et_hrm(isd:ied,jsd:jed,nk))
+
+  id_uhrho_et_hrm = register_diag_field ('ocean_model', 'uhrho_et_hrm', &
+        Grd%tracer_axes_flux_x(1:3), Time%model_time,                  &
+       'i-component of hrm mass transport',                            &
+       '(kg/m^3)*m^2/sec', missing_value=missing_value, range=(/-1.e10,1.e10/))
+
+  id_vhrho_nt_hrm = register_diag_field ('ocean_model', 'vhrho_nt_hrm', &
+        Grd%tracer_axes_flux_y(1:3), Time%model_time,                  &
+       'j-component of hrm mass transport',                            &
+       '(kg/m^3)*m^2/sec', missing_value=missing_value, range=(/-1.e10,1.e10/))
 
 end subroutine ocean_hrm_init
 ! </SUBROUTINE>  NAME="ocean_hrm_init"
@@ -323,9 +336,8 @@ do k = 1,size(slope_yz_face,3)
 
   call compute_hrm_Ttransport(T_prog, T_trans, tau)
 
-  ! FIXME: enable these.
-  !call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
-  !call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
+  call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
+  call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
 
 end subroutine compute_hrm_transport
 
@@ -373,7 +385,6 @@ avrg_psi(:,:,nk+1) = 0.0
 
 del_psi = avrg_psi(:,:,2:nk) - avrg_psi(:,:,1:nk-1)
 
-    ! FIXME: which time index should we use?
 T_trans = sum(del_psi*T_prog(index_temp)%field(:, :, :, tau),DIM = 3)
 
 end subroutine compute_hrm_Ttransport
