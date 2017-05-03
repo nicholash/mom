@@ -441,10 +441,15 @@ subroutine compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
 
   !
   real :: t
-  real,dimension(isd:ied,jsd:jed,nk) :: v,vE,vW,vu,vl
+  real,dimension(isd:ied,jsd:jed,nk) :: vE,vW,uN,uS
+  real,dimension(isd:ied+1,jsd:jed,nk-1) :: vu,vl
+  real,dimension(isd:ied,jsd:jed+1,nk-1) :: uu,ul
   real,dimension(nk) :: z, delt_z
   real,dimension(isd:ied,jsd:jed) :: delt_x
   real,dimension(isd:ied, jsd:jed, nk, 0:1) :: slope_xz_avg
+  real,dimension(isd:ied+1, jsd:jed, nk) :: slope_xz_zonal,slope_xz_face,v
+  real,dimension(isd:ied, jsd:jed+1, nk) :: slope_yz_meridional,slope_yz_face,u
+ 
 
   integer :: i, j, k, l
 
@@ -470,58 +475,85 @@ subroutine compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
 
   ! FIXME: which time index to use?
   t = 1 !The velocity is given at 3 time levels t = 1,2,3
-  v = velocity%u(:,:,:,2,t) !The j component of velocity at t time level
-  vE = v(2:,:,:) !The velocity on the east side of a box
-  vW = v(1:ied-1,:,:) !The velocity on the west side of a box
-  VE = (vE(:,:,1:ied-1) + vE(:,:,2:))/2 !Average the velocity onto depth z
-  VW = (vW(:,:,1:ied-1) + vW(:,:,2:))/2 !Average the velocity onto depth z
+  v(2:,:,:) = velocity%u(:,:,:,2,t) !The j component of velocity at t time level
+  v(1,:,:) = 0.0
+  ! ??? Is velocity located at the northeastern lower vertex of a tracer cell? Need to check the index for following operations
+  vE = v(2:,:,:) !The velocity on the eastern side of a box
+  vW = v(1:ied-1,:,:) !The velocity on the western side of a box
+  VE(:,:,2:) = (vE(:,:,1:ied-1) + vE(:,:,2:))/2 !Average the velocity onto depth z
+  VW(:,:,2:) = (vW(:,:,1:ied-1) + vW(:,:,2:))/2 !Average the velocity onto depth z
   vu = v(:,:,1:ied-1) !Velocity at upper face
   vl = v(:,:,2:)   !Velocity at lower face
-  Vu = (vu(1:ied-1,:,:) + vu(2:,:,:))/2 !Average to the center
-  Vl = (vl(1:ied-1,:,:) + vl(2:,:,:))/2 !Average to the center
+  Vu(1:ied-1,:,:) = (vu(1:ied-1,:,:) + vu(2:,:,:))/2 !Average to the center
+  Vl(1:ied-1,:,:) = (vl(1:ied-1,:,:) + vl(2:,:,:))/2 !Average to the center
+  
+  u(:,2:,:) = velocity%u(:,:,:,1,t) !The i component of velocity at t time level
+  u(:,1,:) = 0.0
+  uN = u(:,2:,:) !The velocity on the northern side of a box
+  uS = v(:,1:jed-1,:) !The velocity on the southern side of a box
+  UN(:,:,2:) = (uN(:,:,1:ied-1) + uN(:,:,2:))/2 !Average the velocity onto depth z
+  US(:,:,2:) = (uS(:,:,1:ied-1) + uS(:,:,2:))/2 !Average the velocity onto depth z
+  uu = u(:,:,1:ied-1) !Velocity at upper face
+  ul = u(:,:,2:)   !Velocity at lower face
+  Uu(:,1:jed-1,:) = (vu(:,1:jed-1,:) + vu(:,2:,:))/2 !Average to the center
+  Ul(:,1:jed-1,:) = (vl(:,1:jed-1,:) + vl(:,2:,:))/2 !Average to the center
   
   z = Grid%zt  ! distance from surface to grid point in level k (m) 
   delt_z = Grid%dzt  ! initial vertical resolution of T or U grid cells (m)
   delt_x = Grid%dxtn ! i-width of north face of T-cells (m)
 
-  !Put a limit to the neutral slopes
-  !do i = 1,size(slopex_xz,1)
-  	!do j = 1,size(slopex_xz,2)
-  	!	do k = 1,size(slopex_xz,3)
-  	!		do l = 1,size(slopex_xz,4)
-  	!			do m = 1,size(slopex_xz,5)
-  	!				if slopex_xz(i,j,k,l,m) > 10^-2
-  	!				   slopex_xz(i,j,k,l,m) = 10^-2
-  	!				end if
-  	!			enddo
-  	!		enddo
-  	!	enddo
-  	!enddo
-  !enddo
   
   !Take the average of the upper and lower quater cells
   slope_xz_avg = (slopex_xz(:,:,:,:,0) + slopex_xz(:,:,:,:,1))/2
+  
+  slope_xz_zonal(2:ied,:,:) = (slope_xz_avg(:ied-1,:,:,1) + slope_xz_avg(2:,:,:,0))/2
+  slope_xz_zonal(1,:,:) = slope_xz_avg(1,:,:,0)
+  slope_xz_zonal(ied+1,:,:) = slope_xz_avg(ied,:,:,1)
+  ! Kept the first face but not the last
+  slope_xz_face(:,2:,:) = (slope_xz_zonal(:,2:,:) + slope_xz_zonal(:,1:jed-1:,:))/2
+  slope_xz_face(:,1,:) = slope_xz_zonal(:,1,:)
+  
+  slope_yz_avg = (slopey_yz(:,:,:,:,0) + slopey_yz(:,:,:,:,1))/2  
+  slope_yz_meridional(:,2:jed,:) = (slope_yz_avg(:,:jed-1,:,1) + slope_yz_avg(:,2:,:,0))/2
+  slope_yz_meridional(:,1,:) = slope_yz_avg(:,1,:,0)
+  slope_yz_meridional(:,jed+1,:) = slope_yz_avg(:,jed,:,1)
+  slope_yz_face(2:,:,:) = (slope_yz_meridional(2:,:,:) + slope_yz_meridional(1:jed-1:,:,:))/2
+  slope_yz_face(1,:,:) = (slope_yz_meridional(1,:,:)
+  
+  
   !print *,size(slopexz) !To check the dimension of slopexz
   
  !Set a limit to the neutral slopes
- do l = 1,size(slope_xz_avg,4)
-   do k = 1,size(slope_xz_avg,3)
-     do j = 1,size(slope_xz_avg,2)
-       do i = 1,size(slope_xz_avg,1)
-         if (slope_xz_avg(i,j,k,l) > 10**-2) then
-  					slope_xz_avg(i,j,k,l) = 10**-2
-  			end if
-  		enddo
+do k = 1,size(slope_xz_face,3)
+     do j = 1,size(slope_xz_face,2)
+       do i = 1,size(slope_xz_face,1)
+         if (slope_xz_face(i,j,k,l) > 10**-2) then
+  					slope_xz_face(i,j,k,l) = 10**-2
+  		 end if
+  	  enddo
   	enddo
-    enddo
-  enddo
+ enddo
+ 
+  !Set a limit to the neutral slopes
+do k = 1,size(slope_yz_face,3)
+     do j = 1,size(slope_yz_face,2)
+       do i = 1,size(slope_yz_face,1)
+         if (slope_yz_face(i,j,k,l) > 10**-2) then
+  					slope_yz_face(i,j,k,l) = 10**-2
+  		 end if
+  	  enddo
+  	enddo
+ enddo
   
-  do k=1,nk
+  !Calculate HRM from second depths
+  do k=2,nk
      do j=jsc,jec
         do i=isc,iec
-           uhrho_et_hrm(i,j,k) = 0.0
-           vhrho_nt_hrm(i,j,k) = 1/24*(VE(i, j, k)-VW(i, j, k))*(slope_xz_avg(i,j,k,0)+slope_xz_avg(i,j,k,1))*(delt_x(i,j))**2 + &
-           1/48*(Vu(i, j, k)-Vl(i, j, k))/delt_z(k)*((slope_xz_avg(i,j,k,0))**2+(slope_xz_avg(i,j,k,1))**2)*(delt_x(i, j))**3
+           uhrho_et_hrm(i,j,k) = 1/24*(UN(i, j, k)-US(i, j, k))*(slope_yz_face(i,j,k)+slope_yz_face(i,j+1,k))*(delt_x(i,j))**2 + &
+           1/48*(Uu(i, j, k-1)-Ul(i, j, k-1))/delt_z(k)*((slope_yz_face(i,j,k))**2+(slope_yz_face(i,j+1,k))**2)*(delt_x(i, j))**3
+           
+           vhrho_nt_hrm(i,j,k) = 1/24*(VE(i, j, k)-VW(i, j, k))*(slope_xz_face(i,j,k)+slope_xz_face(i+1,j,k))*(delt_x(i,j))**2 + &
+           1/48*(Vu(i, j, k-1)-Vl(i, j, k-1))/delt_z(k)*((slope_xz_face(i,j,k))**2+(slope_xz_face(i+1,j,k))**2)*(delt_x(i, j))**3
         enddo
      enddo
   enddo
