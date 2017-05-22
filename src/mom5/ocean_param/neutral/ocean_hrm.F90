@@ -326,10 +326,12 @@ do k = 1,size(slope_yz_face,3)
      do j=jsc,jec
         do i=isc,iec
            uhrho_et_hrm(i,j,k) = 1/24*(UN(i, j, k)-US(i, j, k))*(slope_yz_face(i,j,k)+slope_yz_face(i,j+1,k))*(delt_x(i,j))**2 + &
-           1/48*(Uu(i, j, k-1)-Ul(i, j, k-1))/delt_z(k)*((slope_yz_face(i,j,k))**2+(slope_yz_face(i,j+1,k))**2)*(delt_x(i, j))**3
+           1/48*(Uu(i, j, k-1)-Ul(i, j, k-1))/delt_z(k)*((slope_yz_face(i,j,k))**2+(slope_yz_face(i,j+1,k))**2)*(delt_x(i, j))**3 + &
+           1/128*(Uu(i,j,k-1)-Ul(i,j,k-1))/delt_z(k)*(slope_yz_face(i,j+1,k)-slope_yz_face(i,j,k))**2*(delt_x(i, j))**3
 
            vhrho_nt_hrm(i,j,k) = 1/24*(VE(i, j, k)-VW(i, j, k))*(slope_xz_face(i,j,k)+slope_xz_face(i+1,j,k))*(delt_x(i,j))**2 + &
-           1/48*(Vu(i, j, k-1)-Vl(i, j, k-1))/delt_z(k)*((slope_xz_face(i,j,k))**2+(slope_xz_face(i+1,j,k))**2)*(delt_x(i, j))**3
+           1/48*(Vu(i, j, k-1)-Vl(i, j, k-1))/delt_z(k)*((slope_xz_face(i,j,k))**2+(slope_xz_face(i+1,j,k))**2)*(delt_x(i, j))**3 + &
+           1/128*(Vu(i,j,k-1)-Vl(i,j,k-1))/delt_z(k)*(slope_xz_face(i+1,j,k)-slope_xz_face(i,j,k))**2*(delt_x(i, j))**3
         enddo
      enddo
   enddo
