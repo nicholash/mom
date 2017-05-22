@@ -578,11 +578,11 @@ contains
        dTdz(:,:,nk,n) = 0.0
     enddo
 
-    do n=1,num_prog_tracers
-       call diagnose_3d(Time, Grid, id_dTdx(n), dTdx(:,:,:,n))
-       call diagnose_3d(Time, Grid, id_dTdy(n), dTdy(:,:,:,n))
-       call diagnose_3d(Time, Grid, id_dTdz(n), dTdz(:,:,1:nk,n))
-    enddo
+    !do n=1,num_prog_tracers
+    !   call diagnose_3d(Time, Grid, id_dTdx(n), dTdx(:,:,:,n))
+    !   call diagnose_3d(Time, Grid, id_dTdy(n), dTdy(:,:,:,n))
+    !   call diagnose_3d(Time, Grid, id_dTdz(n), dTdz(:,:,1:nk,n))
+    !enddo
 
   end subroutine tracer_gradients
   ! </SUBROUTINE> NAME="tracer_gradients"
@@ -688,6 +688,8 @@ contains
     dTdx_ = dTdx(:,:,:,index_temp)
     dTdy_ = dTdy(:,:,:,index_temp)
     dTdz_ = dTdz(:,:,:,index_temp)
+
+    !print*, 'maxval(drhodT), maxval(dTdz_), maxval(drhodS), maxval(dSdz): ', maxval(Dens%drhodT), maxval(dTdz_), maxval(Dens%drhodS), maxval(dSdz)
 
     drhodz_z(:,:,:,0) = drhodT(:,:,:)*dTdz_(:,:,0:nk-1) + drhodS(:,:,:)*dSdz(:,:,0:nk-1)
     drhodz_z(:,:,:,1) = drhodT(:,:,:)*dTdz_(:,:,1:nk)   + drhodS(:,:,:)*dSdz(:,:,1:nk)
@@ -834,8 +836,8 @@ contains
     slopey(COMP,:)   = sum(slopey_z(COMP,:,:), dim=4)/2.0
     absslope(COMP,:) = sqrt(slopex(COMP,:)**2 + slopey(COMP,:)**2)
 
-    call diagnose_3d(Time, Grid, id_slopex, slopex, abs_max=1.e10)
-    call diagnose_3d(Time, Grid, id_slopey, slopey, abs_max=1.e10)
+    !call diagnose_3d(Time, Grid, id_slopex, slopex, abs_max=1.e10)
+    !call diagnose_3d(Time, Grid, id_slopey, slopey, abs_max=1.e10)
 
   end subroutine neutral_slopes
   ! </SUBROUTINE> NAME="neutral_slopes"

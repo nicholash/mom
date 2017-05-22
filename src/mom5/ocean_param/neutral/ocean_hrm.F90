@@ -55,6 +55,7 @@ use ocean_parameters_mod,    only: missing_value
 use mpp_domains_mod,         only: cyclic_global_domain, global_data_domain
 use mpp_mod,                 only: input_nml_file, mpp_error, stdout, stdlog
 use mpp_mod,                 only: mpp_clock_id, mpp_clock_begin, mpp_clock_end, CLOCK_ROUTINE
+use ocean_domains_mod,       only: get_local_indices
 
 use ocean_nphysics_new_mod,  only: neutral_slopes, gradrho, tracer_gradients
 use ocean_tracer_diag_mod,   only: diagnose_eta_tend_3dflux
@@ -79,19 +80,14 @@ type(ocean_domain_type), save    :: Dom_flux
 
 integer :: id_uhrho_et_hrm      =-1
 integer :: id_vhrho_nt_hrm      =-1
+integer :: id_T_trans_hrm       =-1
 
 #include <ocean_memory.h>
-
-#ifdef MOM_STATIC_ARRAYS
-
-#else
-
-#endif
 
 ! for diagnostics 
 real, dimension(:,:,:), allocatable :: uhrho_et_hrm  ! i-component of advective mass transport
 real, dimension(:,:,:), allocatable :: vhrho_nt_hrm  ! j-component of advective mass transport
-real, dimension(:,:,:), allocatable :: T_trans       ! vertical sum of T transport
+real, dimension(:,:), allocatable :: T_trans       ! vertical sum of T transport
 
 ! introduce following derived types so that do not need to know num_prog_tracers at compile time 
 type(tracer_3d_1_nk_type), dimension(:), allocatable  :: dTdx    ! tracer partial derivative (tracer/m)
@@ -168,8 +164,14 @@ subroutine ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_pro
   type(ocean_prog_tracer_type), intent(inout)        :: T_prog(:)
   type(ocean_velocity_type),    intent(inout)        :: Velocity
 
-  allocate (vhrho_nt_hrm(isd:ied,jsd:jed,nk))
-  allocate (uhrho_et_hrm(isd:ied,jsd:jed,nk))
+  module_is_initialized = .TRUE.
+
+  call get_local_indices(Domain,isd,ied,jsd,jed,isc,iec,jsc,jec)
+  nk = Grid%nk
+
+  allocate(vhrho_nt_hrm(isd:ied,jsd:jed,nk))
+  allocate(uhrho_et_hrm(isd:ied,jsd:jed,nk))
+  allocate(T_trans(isd:ied,jsd:jed))
 
   id_uhrho_et_hrm = register_diag_field ('ocean_model', 'uhrho_et_hrm', &
         Grd%tracer_axes_flux_x(1:3), Time%model_time,                  &
@@ -179,6 +181,11 @@ subroutine ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_pro
   id_vhrho_nt_hrm = register_diag_field ('ocean_model', 'vhrho_nt_hrm', &
         Grd%tracer_axes_flux_y(1:3), Time%model_time,                  &
        'j-component of hrm mass transport',                            &
+       '(kg/m^3)*m^2/sec', missing_value=missing_value, range=(/-1.e10,1.e10/))
+
+  id_T_trans_hrm = register_diag_field ('ocean_model', 'T_trans_hrm', &
+        Grd%tracer_axes(1:2), Time%model_time,                        &
+       'j-component of hrm mass transport',                           &
        '(kg/m^3)*m^2/sec', missing_value=missing_value, range=(/-1.e10,1.e10/))
 
 end subroutine ocean_hrm_init
@@ -232,7 +239,10 @@ subroutine compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
   integer :: stdoutunit
   stdoutunit=stdout()
 
-  print*, 'CALLING compute_hrm_transport'
+  if ( .not. module_is_initialized ) then 
+     call mpp_error(FATAL, &
+     '==>Error from ocean_hrm: needs initialization')
+  endif 
 
   tau = Time%tau
 
@@ -338,8 +348,15 @@ do k = 1,size(slope_yz_face,3)
 
   call compute_hrm_Ttransport(T_prog, T_trans, tau)
 
-  call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
-  call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
+  if (id_uhrho_et_hrm > 0) then
+    call diagnose_3d(Time, Grd, id_uhrho_et_hrm, uhrho_et_hrm(:,:,:))
+  endif
+  if (id_vhrho_nt_hrm > 0) then
+    call diagnose_3d(Time, Grd, id_vhrho_nt_hrm, vhrho_nt_hrm(:,:,:))
+  endif
+  if (id_T_trans_hrm > 0) then
+    call diagnose_2d(Time, Grd, id_T_trans_hrm, T_trans(:,:))
+  endif
 
 end subroutine compute_hrm_transport
 
@@ -408,7 +425,9 @@ subroutine ocean_hrm_end(Time)
 
   if(.not. use_this_module) return
 
-  ! FIXME I don't know if we need this.
+  deallocate(vhrho_nt_hrm)
+  deallocate(uhrho_et_hrm)
+  deallocate(T_trans)
 
 end subroutine ocean_hrm_end
 ! </SUBROUTINE> NAME="ocean_hrm_end"
