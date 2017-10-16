@@ -1302,7 +1302,7 @@ subroutine ocean_model_init(Ocean, Ocean_state, Time_init, Time_in)
     call ocean_nphysics_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_prog(:), Ocean_options, &
                              vert_coordinate_type, vert_coordinate_class, cmip_units, debug=debug)
     call ocean_nphysics_new_init(Grid, Domain, Time, Time_steps, Thickness, T_prog, Ocean_options, vert_coordinate_type)
-    call ocean_hrm_init(Grid, Domain, Time, Time_steps, Thickness, Dens, T_prog, Velocity)
+    call ocean_hrm_init(Grid, Domain, Time, Dens, T_prog, Velocity)
     call ocean_submesoscale_init(Grid, Domain, Time, Dens, T_prog(:), Ocean_options, dtime_t, &
                                  vert_coordinate_class, cmip_units, debug=debug)
     call ocean_lap_friction_init(Grid, Domain, Time, Ocean_options, dtime_u, have_obc, horz_grid, debug=debug)
@@ -1827,7 +1827,7 @@ subroutine ocean_model_init(Ocean, Ocean_state, Time_init, Time_in)
        call mpp_clock_end(id_neutral)
 
        call mpp_clock_begin(id_hrm)
-       call compute_hrm_transport(Time, Dens, Thickness, Grid, T_prog, Velocity)
+       call compute_hrm_transport(Time, Dens, Grid, T_prog, Velocity)
        call mpp_clock_end(id_hrm)
 
        ! compute form drag vertical viscosity for vertical momentum transport

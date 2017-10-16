@@ -588,11 +588,11 @@ test_array(isc:iec,jsc:jec,:nk-2) = rhodz(:,:,:)
 call diagnose_3d(Time, Grid, id_rhodz, test_array(:, :, :))
 endif
 
-if (id_rhodz_avg > 0) then
-test_array(:,:,:) = 0.0
-test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg(:,:,:)
-call diagnose_3d(Time, Grid, id_rhodz_avg, test_array(:, :, :))
-endif
+!if (id_rhodz_avg > 0) then
+!test_array(:,:,:) = 0.0
+!test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg(:,:,:)
+!call diagnose_3d(Time, Grid, id_rhodz_avg, test_array(:, :, :))
+!endif
 
 if (id_rhodx_E_avg > 0) then
 test_array(:,:,:) = 0.0
@@ -606,17 +606,17 @@ test_array(isc:iec-1,jsc:jec-1,:nk) = rhodx_W_avg(:,:,:)
 call diagnose_3d(Time, Grid, id_rhodx_W_avg, test_array(:, :, :))
 endif
 
-if (id_rhodz_avg_E > 0) then
-test_array(:,:,:) = 0.0
-test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg_E(:,:,:)
-call diagnose_3d(Time, Grid, id_rhodz_avg_E, test_array(:, :, :))
-endif
+!if (id_rhodz_avg_E > 0) then
+!test_array(:,:,:) = 0.0
+!test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg_E(:,:,:)
+!call diagnose_3d(Time, Grid, id_rhodz_avg_E, test_array(:, :, :))
+!endif
 
-if (id_rhodz_avg_W > 0) then
-test_array(:,:,:) = 0.0
-test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg_W(:,:,:)
-call diagnose_3d(Time, Grid, id_rhodz_avg_W, test_array(:, :, :))
-endif
+!if (id_rhodz_avg_W > 0) then
+!test_array(:,:,:) = 0.0
+!test_array(isc:iec-1,jsc:jec-1,:nk-2) = rhodz_avg_W(:,:,:)
+!call diagnose_3d(Time, Grid, id_rhodz_avg_W, test_array(:, :, :))
+!endif
 
 if (id_hrm_slopexS > 0) then
 test_array1(:,:,:) = 0.0
